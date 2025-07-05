@@ -1,7 +1,7 @@
 import sys
 
 # --- 기본 가정 및 상수 설정 ---
-INFLATION_RATE = 0.03  # 연평균 물가상승률 (3%)
+# INFLATION_RATE 상수를 제거하고 사용자 입력으로 받도록 변경
 PENSION_TAX_THRESHOLD = 15_000_000  # 연금소득 종합과세 기준 금액 (2025년)
 
 # 연령별 연금소득세율 (지방소득세 포함)
@@ -12,7 +12,7 @@ PENSION_TAX_RATES = {
 }
 SEPARATE_TAX_RATE = 0.165  # 분리과세 선택 시 세율 (16.5%)
 
-# 2025년 기준 종합소득세 과세표준 구간 및 세율 (누진공제액 전체 재검증 및 수정 완료)
+# 2025년 기준 종합소득세 과세표준 구간 및 세율 (누진공제액 최종 수정 완료)
 COMPREHENSIVE_TAX_BRACKETS = [
     (14_000_000, 0.066, 0),
     (50_000_000, 0.165, 1_260_000 * 1.1),
@@ -32,13 +32,15 @@ def get_user_input():
             age_input_str = input("▶ 납입 시작, 은퇴, 수령 종료 나이를 띄어쓰기로 구분하여 입력하세요 (예: 30 60 90): ")
             start_age, retirement_age, end_age = map(int, age_input_str.split())
 
-            print("\n# 단계별 예상 수익률 입력 (연평균, %)")
-            print("은퇴 전 '자산 형성기'와 은퇴 후 '자산 인출기'의 전략이 다른 점을 고려하여 각각 입력합니다.")
+            print("\n# 단계별 예상 수익률 및 물가상승률 입력 (연평균, %)")
             pre_retirement_return_input = float(input(f"▶ 은퇴 전({retirement_age}세 이전) 예상 수익률 (예: 7.5): "))
             pre_retirement_return = pre_retirement_return_input / 100.0
 
             post_retirement_return_input = float(input(f"▶ 은퇴 후({retirement_age}세 이후) 예상 수익률 (예: 4.0): "))
             post_retirement_return = post_retirement_return_input / 100.0
+            
+            inflation_rate_input = float(input("▶ 예상 연평균 물가상승률 (예: 3.0): "))
+            inflation_rate = inflation_rate_input / 100.0
 
             print("\n[참고] 연금저축 납입 한도 (2025년 기준)")
             print("  - 세액공제 한도: 연 600만원")
@@ -61,7 +63,7 @@ def get_user_input():
                 continue
             
             payout_years = end_age - retirement_age
-            return start_age, retirement_age, annual_contribution, payout_years, pre_retirement_return, post_retirement_return
+            return start_age, retirement_age, annual_contribution, payout_years, pre_retirement_return, post_retirement_return, inflation_rate
 
         except ValueError:
             print("\n오류: 입력 형식이 올바르지 않습니다. 각 항목의 개수와 숫자 여부를 확인 후 다시 입력해주세요.\n")
@@ -114,7 +116,7 @@ def calculate_comprehensive_tax(taxable_income):
     return 0
 
 
-def display_results(start_age, retirement_age, annual_contribution, payout_years, pre_retirement_return, post_retirement_return, total_at_retirement, monthly_withdrawal_pre_tax):
+def display_results(start_age, retirement_age, annual_contribution, payout_years, pre_retirement_return, post_retirement_return, inflation_rate, total_at_retirement, monthly_withdrawal_pre_tax):
     """모든 계산 결과를 종합하여 사용자에게 형식에 맞춰 보여주고, 계산의 한계점을 안내합니다."""
     width = 70
     title = "< 연금저축 예상 수령액 >"
@@ -126,6 +128,7 @@ def display_results(start_age, retirement_age, annual_contribution, payout_years
     print(f"입력 정보:\n  - 시작 나이: {start_age}세\n  - 은퇴 나이: {retirement_age}세")
     print(f"  - 은퇴 전 예상 연평균 수익률: {pre_retirement_return*100:.1f}%")
     print(f"  - 은퇴 후 예상 연평균 수익률: {post_retirement_return*100:.1f}%")
+    print(f"  - 예상 연평균 물가상승률: {inflation_rate*100:.1f}%")
     print(f"  - 연 납입액: {annual_contribution:,.0f}원")
     print(f"  - 수령 기간: {payout_years}년 ({retirement_age}세~{retirement_age + payout_years}세)")
     print("-" * width)
@@ -207,10 +210,10 @@ def display_results(start_age, retirement_age, annual_contribution, payout_years
     print(f"2) 은퇴 후 첫 월 실수령액의 현재가치".center(width))
     print("-" * width)
     years_to_discount = retirement_age - start_age
-    present_value_of_pension = base_monthly_take_home_at_retirement / ((1 + INFLATION_RATE) ** years_to_discount)
+    present_value_of_pension = base_monthly_take_home_at_retirement / ((1 + inflation_rate) ** years_to_discount)
     
     print(f"미래({retirement_age}세)에 받을 첫 월 실수령액 약 {base_monthly_take_home_at_retirement:,.0f}원은")
-    print(f"연평균 물가상승률(연 {INFLATION_RATE * 100:.0f}%)을 감안하면,")
+    print(f"입력하신 연평균 물가상승률(연 {inflation_rate * 100:.1f}%)을 감안하면,")
     print(f"▶ 현재 시점의 약 {present_value_of_pension:,.0f}원과 같은 가치입니다.")
     print("-" * width + "\n")
     
@@ -228,10 +231,10 @@ def main():
     """메인 실행 함수"""
     user_inputs = get_user_input()
     if user_inputs and user_inputs[0] is not None:
-        start_age, retirement_age, annual_contribution, payout_years, pre_retirement_return, post_retirement_return = user_inputs
+        start_age, retirement_age, annual_contribution, payout_years, pre_retirement_return, post_retirement_return, inflation_rate = user_inputs
         total_at_retirement = calculate_total_at_retirement(start_age, retirement_age, annual_contribution, pre_retirement_return)
         monthly_withdrawal_pre_tax = calculate_pension_payouts(total_at_retirement, payout_years, post_retirement_return)
-        display_results(start_age, retirement_age, annual_contribution, payout_years, pre_retirement_return, post_retirement_return, total_at_retirement, monthly_withdrawal_pre_tax)
+        display_results(start_age, retirement_age, annual_contribution, payout_years, pre_retirement_return, post_retirement_return, inflation_rate, total_at_retirement, monthly_withdrawal_pre_tax)
 
 
 if __name__ == "__main__":
