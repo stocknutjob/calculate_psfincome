@@ -1,7 +1,7 @@
 import sys
 
 # --- 기본 가정 및 상수 설정 ---
-# INFLATION_RATE 상수를 제거하고 사용자 입력으로 받도록 변경
+INFLATION_RATE = 0.03  # 연평균 물가상승률 (3%)
 PENSION_TAX_THRESHOLD = 15_000_000  # 연금소득 종합과세 기준 금액 (2025년)
 
 # 연령별 연금소득세율 (지방소득세 포함)
@@ -224,6 +224,7 @@ def display_results(start_age, retirement_age, annual_contribution, payout_years
     print("2. 세금: 실제 세금은 개인별 소득/세액공제(부양가족, 의료비 등)에 따라 달라집니다.")
     print("3. 수익률: 투자는 원금 손실이 가능하며, 수익률과 물가상승률은 예측과 다를 수 있습니다.")
     print("4. 연금재원: 세액공제 받지 않은 납입금(비과세 재원)은 계산에 미반영되었습니다.")
+    print("5. 세법 개정: 본 계산은 2025년 기준 세법을 따르며, 향후 세법 개정에 따라 결과가 달라질 수 있습니다.") # 수정된 문구 추가
     print("*"*width)
 
 
@@ -231,10 +232,14 @@ def main():
     """메인 실행 함수"""
     user_inputs = get_user_input()
     if user_inputs and user_inputs[0] is not None:
-        start_age, retirement_age, annual_contribution, payout_years, pre_retirement_return, post_retirement_return, inflation_rate = user_inputs
+        (start_age, retirement_age, annual_contribution, payout_years, 
+         pre_retirement_return, post_retirement_return, inflation_rate) = user_inputs
+        
         total_at_retirement = calculate_total_at_retirement(start_age, retirement_age, annual_contribution, pre_retirement_return)
         monthly_withdrawal_pre_tax = calculate_pension_payouts(total_at_retirement, payout_years, post_retirement_return)
-        display_results(start_age, retirement_age, annual_contribution, payout_years, pre_retirement_return, post_retirement_return, inflation_rate, total_at_retirement, monthly_withdrawal_pre_tax)
+        display_results(start_age, retirement_age, annual_contribution, payout_years, 
+                        pre_retirement_return, post_retirement_return, inflation_rate, 
+                        total_at_retirement, monthly_withdrawal_pre_tax)
 
 
 if __name__ == "__main__":
