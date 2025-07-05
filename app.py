@@ -253,6 +253,7 @@ if st.session_state.calculated:
     non_taxable_ratio = (total_non_deductible_paid / total_at_retirement) if total_at_retirement > 0 else 0
     non_taxable_monthly_payout = monthly_withdrawal_pre_tax * non_taxable_ratio
     taxable_monthly_payout = monthly_withdrawal_pre_tax - non_taxable_monthly_payout
+    taxable_annual_payout = taxable_monthly_payout * 12 # [수정] 누락된 변수 계산 추가
     
     st.header("📈 예상 결과")
     col1, col2 = st.columns(2)
@@ -263,7 +264,8 @@ if st.session_state.calculated:
     
     base_monthly_take_home_taxable = display_payout_analysis(s.retirement_age, s.end_age, taxable_monthly_payout, s.other_income_base)
     
-    display_present_value_analysis(s, base_monthly_take_home_taxable + non_taxable_monthly_payout, taxable_monthly_payout, inflation_rate)
+    # [수정] 수정된 함수 호출에 맞게 인자 전달
+    display_present_value_analysis(s, base_monthly_take_home_taxable + non_taxable_monthly_payout, taxable_monthly_payout, taxable_annual_payout, inflation_rate)
 
 else:
     if st.session_state.get('has_calculated_once', False):
