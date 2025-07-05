@@ -92,8 +92,8 @@ with st.sidebar:
     if st.button("결과 확인하기"):
         if not (start_age < retirement_age < end_age):
             st.error("나이 순서(시작 < 은퇴 < 종료)가 올바르지 않습니다.")
+            st.session_state.calculated = False
         else:
-            # 기본 계산 수행 및 세션 상태에 저장
             st.session_state.calculated = True
             st.session_state.results['start_age'] = start_age
             st.session_state.results['retirement_age'] = retirement_age
@@ -112,7 +112,6 @@ with st.sidebar:
 
 # 2. 계산 결과 출력 (세션 상태가 '계산 완료'일 때만)
 if st.session_state.calculated:
-    # 세션 상태에서 결과값 불러오기
     res = st.session_state.results
     total_at_retirement = res['total_at_retirement']
     monthly_withdrawal_pre_tax = res['monthly_withdrawal_pre_tax']
@@ -196,4 +195,5 @@ with st.expander("주의사항 보기"):
     2. **세금**: 실제 세금은 개인별 소득/세액공제(부양가족, 의료비 등)에 따라 달라집니다.
     3. **수익률**: 투자는 원금 손실이 가능하며, 수익률과 물가상승률은 예측과 다를 수 있습니다.
     4. **연금재원**: 세액공제 받지 않은 납입금(비과세 재원)은 계산에 미반영되었습니다.
+    5. **세법 개정**: 본 계산은 2025년 기준 세법을 따르며, 향후 세법 개정에 따라 실제 수령액은 달라질 수 있습니다.
     """)
