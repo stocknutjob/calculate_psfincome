@@ -126,43 +126,43 @@ def display_payout_analysis(retirement_age, end_age, taxable_monthly_payout, oth
 
 def display_present_value_analysis(s, base_monthly_take_home, taxable_monthly_payout, taxable_annual_payout, inflation_rate):
     """연금의 현재가치를 분석하여 표시합니다."""
-    with st.expander("🕒 연금의 현재가치 분석 보기"):
-        years_to_discount = s.retirement_age - s.start_age
-        monthly_inflation_rate = (1 + inflation_rate)**(1/12) - 1
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("첫 연금(월)의 현재가치")
-            present_value_of_first_month = base_monthly_take_home / ((1 + inflation_rate) ** years_to_discount)
-            st.metric("현재가치", f"{present_value_of_first_month:,.0f} 원", help=f"미래({s.retirement_age}세)에 받을 첫 월 실수령액 {base_monthly_take_home:,.0f}원의 현재가치입니다.")
+    st.header("🕒 연금의 현재가치 분석")
+    years_to_discount = s.retirement_age - s.start_age
+    monthly_inflation_rate = (1 + inflation_rate)**(1/12) - 1
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("첫 연금(월)의 현재가치")
+        present_value_of_first_month = base_monthly_take_home / ((1 + inflation_rate) ** years_to_discount)
+        st.metric("현재가치", f"{present_value_of_first_month:,.0f} 원", help=f"미래({s.retirement_age}세)에 받을 첫 월 실수령액 {base_monthly_take_home:,.0f}원의 현재가치입니다.")
 
-        with col2:
-            st.subheader("첫 연금(연간)의 현재가치")
-            first_year_present_value = 0
-            for month_offset in range(12):
-                months_to_discount_pv = years_to_discount * 12 + month_offset
-                discounted_value = base_monthly_take_home / ((1 + monthly_inflation_rate) ** (months_to_discount_pv if monthly_inflation_rate > 0 else 1))
-                first_year_present_value += discounted_value
-            st.metric("현재가치", f"{first_year_present_value:,.0f} 원", help=f"미래({s.retirement_age}세)에 받을 첫 해 연금 총액(세후) {base_monthly_take_home*12:,.0f}원의 현재가치입니다.")
+    with col2:
+        st.subheader("첫 연금(연간)의 현재가치")
+        first_year_present_value = 0
+        for month_offset in range(12):
+            months_to_discount_pv = years_to_discount * 12 + month_offset
+            discounted_value = base_monthly_take_home / ((1 + monthly_inflation_rate) ** (months_to_discount_pv if monthly_inflation_rate > 0 else 1))
+            first_year_present_value += discounted_value
+        st.metric("현재가치", f"{first_year_present_value:,.0f} 원", help=f"미래({s.retirement_age}세)에 받을 첫 해 연금 총액(세후) {base_monthly_take_home*12:,.0f}원의 현재가치입니다.")
 
-        st.subheader("연금 총액의 현재가치")
-        total_present_value = 0
-        payout_years = s.end_age - s.retirement_age
-        for year_offset in range(payout_years):
-            current_age = s.retirement_age + year_offset
-            if taxable_annual_payout > PENSION_TAX_THRESHOLD:
-                monthly_take_home = base_monthly_take_home
-            else:
-                if current_age < 70: rate = PENSION_TAX_RATES["under_70"]
-                elif current_age < 80: rate = PENSION_TAX_RATES["under_80"]
-                else: rate = PENSION_TAX_RATES["over_80"]
-                monthly_take_home = taxable_monthly_payout * (1 - rate)
-            for month_offset in range(12):
-                months_to_discount_pv = years_to_discount * 12 + year_offset * 12 + month_offset
-                discounted_value = monthly_take_home / ((1 + monthly_inflation_rate) ** (months_to_discount_pv if monthly_inflation_rate > 0 else 1))
-                total_present_value += discounted_value
-        st.markdown(f"은퇴 후 **{payout_years}년간** 받을 연금 총액을 현재가치로 환산하면,")
-        st.metric("총 연금의 현재가치", f"약 {total_present_value:,.0f} 원")
+    st.subheader("연금 총액의 현재가치")
+    total_present_value = 0
+    payout_years = s.end_age - s.retirement_age
+    for year_offset in range(payout_years):
+        current_age = s.retirement_age + year_offset
+        if taxable_annual_payout > PENSION_TAX_THRESHOLD:
+            monthly_take_home = base_monthly_take_home
+        else:
+            if current_age < 70: rate = PENSION_TAX_RATES["under_70"]
+            elif current_age < 80: rate = PENSION_TAX_RATES["under_80"]
+            else: rate = PENSION_TAX_RATES["over_80"]
+            monthly_take_home = taxable_monthly_payout * (1 - rate)
+        for month_offset in range(12):
+            months_to_discount_pv = years_to_discount * 12 + year_offset * 12 + month_offset
+            discounted_value = monthly_take_home / ((1 + monthly_inflation_rate) ** (months_to_discount_pv if monthly_inflation_rate > 0 else 1))
+            total_present_value += discounted_value
+    st.markdown(f"은퇴 후 **{payout_years}년간** 받을 연금 총액을 현재가치로 환산하면,")
+    st.metric("총 연금의 현재가치", f"약 {total_present_value:,.0f} 원")
 
 # --------------------------------------------------------------------------
 # --- 3. 메인 앱 로직 (Main App Logic) ---
@@ -179,6 +179,12 @@ PENSION_TAX_RATES = {"under_70": 0.055, "under_80": 0.044, "over_80": 0.033}
 def reset_calculation_state():
     st.session_state.calculated = False
 
+def auto_calculate_non_deductible():
+    if st.session_state.auto_calc_non_deductible:
+        excess_amount = max(0, st.session_state.annual_contribution - 6_000_000)
+        st.session_state.non_deductible_contribution = excess_amount
+    reset_calculation_state()
+
 if 'start_age' not in st.session_state:
     st.session_state.start_age = 30
     st.session_state.retirement_age = 60
@@ -189,7 +195,8 @@ if 'start_age' not in st.session_state:
     st.session_state.inflation_rate_input = 3.0
     st.session_state.annual_contribution = 6000000
     st.session_state.non_deductible_contribution = 0
-    st.session_state.other_income_base = 0
+    st.session_state.other_non_deductible = 0
+    st.session_state.auto_calc_non_deductible = True
     st.session_state.calculated = False
     st.session_state.has_calculated_once = False
 
@@ -216,8 +223,13 @@ with st.sidebar:
 
     st.subheader("연간 납입액 (원)")
     st.info("세액공제 한도: 연 600만원\n\n계좌 총 납입 한도: 연 1,800만원")
-    st.number_input("연간 총 납입액", step=100000, key="annual_contribution", on_change=reset_calculation_state)
-    st.number_input("이 중, 세액공제 받지 않는 금액", step=100000, key="non_deductible_contribution", on_change=reset_calculation_state, help="연 600만원을 초과하여 납입하는 금액 등, 세액공제 혜택을 받지 않은 원금은 나중에 연금 수령 시 비과세됩니다.")
+    st.number_input("연간 총 납입액", step=100000, key="annual_contribution", on_change=auto_calculate_non_deductible)
+    
+    st.checkbox("연금저축 납입액에 생기는 연간 비과세 금액 자동 계산", key="auto_calc_non_deductible", on_change=auto_calculate_non_deductible)
+    st.number_input("└ 자동 계산된 비과세 금액", step=100000, key="non_deductible_contribution", on_change=reset_calculation_state, disabled=st.session_state.auto_calc_non_deductible)
+    
+    help_text = "소득이 없어서 세액공제를 받지 못한 금액, ISA 계좌 만기 자금 이전 시 발생할 수 있는 비과세 금액 등 세액공제 혜택을 받지 않은 원금은 나중에 연금 수령 시 비과세됩니다."
+    st.number_input("그 외, 세액공제 받지 못한 총액", step=100000, key="other_non_deductible", on_change=reset_calculation_state, help=help_text)
     
     st.subheader("기타 소득 정보")
     st.number_input("연금 외 다른 소득의 연간 과세표준", step=1000000, key="other_income_base", on_change=reset_calculation_state, help="종합소득에서 각종 공제를 모두 뺀 후, 세금이 부과되는 최종 금액입니다. 종합과세 시에만 사용됩니다.")
@@ -226,6 +238,9 @@ with st.sidebar:
         st.session_state.warnings = []
         if not (st.session_state.start_age < st.session_state.retirement_age < st.session_state.end_age):
             st.error("나이 순서(시작 < 은퇴 < 종료)가 올바르지 않습니다.")
+            st.session_state.calculated = False
+        elif (st.session_state.non_deductible_contribution + st.session_state.other_non_deductible) > st.session_state.annual_contribution:
+            st.error("총 비과세 금액은 연간 총 납입액보다 클 수 없습니다.")
             st.session_state.calculated = False
         else:
             st.session_state.calculated = True
@@ -244,8 +259,9 @@ if st.session_state.calculated:
     inflation_rate = s.inflation_rate_input / 100.0
     
     contribution_years = s.retirement_age - s.start_age
+    total_annual_non_deductible = s.non_deductible_contribution + s.other_non_deductible
     total_principal_paid = s.annual_contribution * contribution_years
-    total_non_deductible_paid = s.non_deductible_contribution * contribution_years
+    total_non_deductible_paid = total_annual_non_deductible * contribution_years
 
     total_at_retirement, asset_growth_df = calculate_total_at_retirement(s.start_age, s.retirement_age, s.annual_contribution, pre_ret_return)
     monthly_withdrawal_pre_tax = calculate_pension_payouts(total_at_retirement, payout_years, post_ret_return)
@@ -253,7 +269,7 @@ if st.session_state.calculated:
     non_taxable_ratio = (total_non_deductible_paid / total_at_retirement) if total_at_retirement > 0 else 0
     non_taxable_monthly_payout = monthly_withdrawal_pre_tax * non_taxable_ratio
     taxable_monthly_payout = monthly_withdrawal_pre_tax - non_taxable_monthly_payout
-    taxable_annual_payout = taxable_monthly_payout * 12 # [수정] 누락된 변수 계산 추가
+    taxable_annual_payout = taxable_monthly_payout * 12
     
     st.header("📈 예상 결과")
     col1, col2 = st.columns(2)
@@ -264,7 +280,6 @@ if st.session_state.calculated:
     
     base_monthly_take_home_taxable = display_payout_analysis(s.retirement_age, s.end_age, taxable_monthly_payout, s.other_income_base)
     
-    # [수정] 수정된 함수 호출에 맞게 인자 전달
     display_present_value_analysis(s, base_monthly_take_home_taxable + non_taxable_monthly_payout, taxable_monthly_payout, taxable_annual_payout, inflation_rate)
 
 else:
@@ -278,6 +293,6 @@ with st.expander("주의사항 보기"):
     1. **계산 대상**: 본 계산기는 '연금저축'을 가정합니다. IRP(특히 퇴직금 재원)는 세금 계산 방식이 다를 수 있습니다.
     2. **세금**: 실제 세금은 개인별 소득/세액공제(부양가족, 의료비 등)에 따라 달라집니다.
     3. **수익률**: 투자는 원금 손실이 가능하며, 수익률과 물가상승률은 예측과 다를 수 있습니다.
-    4. **연금재원**: 세액공제 받지 않은 납입금(비과세 재원)은 계산에 미반영되었습니다.
+    4. **연금재원**: 이 계산은 입력하신 '세액공제 받지 않은 금액'을 바탕으로 비과세 재원을 분리하여 반영합니다. 실제 인출 시점의 정확한 비과세 금액과는 차이가 있을 수 있습니다.
     5. **세법 개정**: 본 계산은 2025년 기준 세법을 따르며, 향후 세법 개정에 따라 실제 수령액은 달라질 수 있습니다.
     """)
