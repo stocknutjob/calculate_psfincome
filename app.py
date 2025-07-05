@@ -59,7 +59,7 @@ def calculate_comprehensive_tax(taxable_income):
 # --- 웹사이트 UI 구성 (Streamlit UI Configuration) ---
 # --------------------------------------------------------------------------
 
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="연금저축 계산기")
 st.title("연금저축 예상 수령액 계산기")
 
 # --- 상수 설정 ---
@@ -68,58 +68,60 @@ PENSION_TAX_RATES = {"under_70": 0.055, "under_80": 0.044, "over_80": 0.033}
 SEPARATE_TAX_RATE = 0.165
 
 # --- 세션 상태 초기화 ---
-if 'calculated' not in st.session_state:
+# 앱이 처음 실행되거나 새로고침될 때 기본값을 설정합니다.
+if 'start_age' not in st.session_state:
+    st.session_state.start_age = 30
+    st.session_state.retirement_age = 60
+    st.session_state.end_age = 90
+    st.session_state.pre_retirement_return_input = 7.5
+    st.session_state.post_retirement_return_input = 4.0
+    st.session_state.inflation_rate_input = 3.0
+    st.session_state.annual_contribution = 6000000
+    st.session_state.other_income_base = 0
     st.session_state.calculated = False
-    st.session_state.results = {}
 
 # 1. 사용자 입력 부분 (사이드바에 배치)
 with st.sidebar:
     st.header("정보 입력")
     
-    start_age = st.number_input("납입 시작 나이", min_value=1, max_value=100, value=30)
-    retirement_age = st.number_input("은퇴 나이 (연금 수령 시작)", min_value=start_age + 1, max_value=100, value=60)
-    end_age = st.number_input("수령 종료 나이", min_value=retirement_age + 1, max_value=120, value=90)
+    # 각 입력 위젯을 st.session_state의 'key'와 연결하여 상태를 유지합니다.
+    st.number_input("납입 시작 나이", min_value=1, max_value=100, key="start_age")
+    st.number_input("은퇴 나이 (연금 수령 시작)", min_value=st.session_state.start_age + 1, max_value=100, key="retirement_age")
+    st.number_age = st.number_input("수령 종료 나이", min_value=st.session_state.retirement_age + 1, max_value=120, key="end_age")
     
     st.subheader("예상 연평균 수익률 및 물가상승률 (%)")
-    pre_retirement_return_input = st.number_input(f"은퇴 전 ({retirement_age}세 이전) 수익률", value=7.5, format="%.1f")
-    post_retirement_return_input = st.number_input(f"은퇴 후 ({retirement_age}세 이후) 수익률", value=4.0, format="%.1f")
-    inflation_rate_input = st.number_input("물가상승률", value=3.0, format="%.1f")
+    st.number_input(f"은퇴 전 ({st.session_state.retirement_age}세 이전) 수익률", format="%.1f", step=0.1, key="pre_retirement_return_input")
+    st.number_input(f"은퇴 후 ({st.session_state.retirement_age}세 이후) 수익률", format="%.1f", step=0.1, key="post_retirement_return_input")
+    st.number_input("물가상승률", format="%.1f", step=0.1, key="inflation_rate_input")
 
     st.subheader("연간 납입액 (원)")
     st.info("세액공제 한도: 연 600만원\n\n계좌 총 납입 한도: 연 1,800만원")
-    annual_contribution = st.number_input("매년 납입할 금액", value=6000000, step=100000, label_visibility="collapsed")
+    st.number_input("매년 납입할 금액", step=100000, label_visibility="collapsed", key="annual_contribution")
     
     if st.button("결과 확인하기"):
-        if not (start_age < retirement_age < end_age):
+        # 버튼을 누르면 계산 상태 플래그만 True로 변경
+        if not (st.session_state.start_age < st.session_state.retirement_age < st.session_state.end_age):
             st.error("나이 순서(시작 < 은퇴 < 종료)가 올바르지 않습니다.")
             st.session_state.calculated = False
         else:
             st.session_state.calculated = True
-            st.session_state.results['start_age'] = start_age
-            st.session_state.results['retirement_age'] = retirement_age
-            st.session_state.results['end_age'] = end_age
-            st.session_state.results['pre_retirement_return'] = pre_retirement_return_input / 100.0
-            st.session_state.results['post_retirement_return'] = post_retirement_return_input / 100.0
-            st.session_state.results['inflation_rate'] = inflation_rate_input / 100.0
-            st.session_state.results['payout_years'] = end_age - retirement_age
-            
-            total_at_retirement = calculate_total_at_retirement(start_age, retirement_age, annual_contribution, st.session_state.results['pre_retirement_return'])
-            st.session_state.results['total_at_retirement'] = total_at_retirement
-            
-            monthly_withdrawal_pre_tax = calculate_pension_payouts(total_at_retirement, st.session_state.results['payout_years'], st.session_state.results['post_retirement_return'])
-            st.session_state.results['monthly_withdrawal_pre_tax'] = monthly_withdrawal_pre_tax
-
 
 # 2. 계산 결과 출력 (세션 상태가 '계산 완료'일 때만)
 if st.session_state.calculated:
-    res = st.session_state.results
-    total_at_retirement = res['total_at_retirement']
-    monthly_withdrawal_pre_tax = res['monthly_withdrawal_pre_tax']
+    # 세션 상태에서 최신 입력값을 불러와 계산
+    payout_years = st.session_state.end_age - st.session_state.retirement_age
+    pre_retirement_return = st.session_state.pre_retirement_return_input / 100.0
+    post_retirement_return = st.session_state.post_retirement_return_input / 100.0
+    inflation_rate = st.session_state.inflation_rate_input / 100.0
+
+    total_at_retirement = calculate_total_at_retirement(st.session_state.start_age, st.session_state.retirement_age, st.session_state.annual_contribution, pre_retirement_return)
+    monthly_withdrawal_pre_tax = calculate_pension_payouts(total_at_retirement, payout_years, post_retirement_return)
     annual_withdrawal_pre_tax = monthly_withdrawal_pre_tax * 12
 
+    # 결과 디스플레이
     st.header("📈 예상 결과")
     col1, col2 = st.columns(2)
-    col1.metric(f"{res['retirement_age']}세 시점 총 적립금", f"{total_at_retirement:,.0f} 원")
+    col1.metric(f"{st.session_state.retirement_age}세 시점 총 적립금", f"{total_at_retirement:,.0f} 원")
     col2.metric("월 수령액 (세전)", f"{monthly_withdrawal_pre_tax:,.0f} 원")
 
     st.header("💰 나이별 월 실수령액 (세후)")
@@ -128,13 +130,14 @@ if st.session_state.calculated:
     if annual_withdrawal_pre_tax > PENSION_TAX_THRESHOLD:
         st.info(f"연간 수령액이 {PENSION_TAX_THRESHOLD/10000:,.0f}만원을 초과하여 종합과세 대상입니다.")
         
-        other_income_base = st.number_input("연금저축 외 다른 소득의 연간 과세표준을 입력하세요 (없으면 0)", value=0, step=1000000)
+        # 이 입력창도 세션 상태와 연결하여 실시간 반영
+        st.number_input("연금저축 외 다른 소득의 연간 과세표준을 입력하세요 (없으면 0)", step=1000000, key="other_income_base")
         
         pension_deduction = calculate_pension_income_deduction(annual_withdrawal_pre_tax)
         taxable_pension_income = annual_withdrawal_pre_tax - pension_deduction
         
-        total_taxable_income = taxable_pension_income + other_income_base
-        tax_on_other_income = calculate_comprehensive_tax(other_income_base)
+        total_taxable_income = taxable_pension_income + st.session_state.other_income_base
+        tax_on_other_income = calculate_comprehensive_tax(st.session_state.other_income_base)
         tax_on_total_income = calculate_comprehensive_tax(total_taxable_income)
         comprehensive_pension_tax = tax_on_total_income - tax_on_other_income
         separate_pension_tax = annual_withdrawal_pre_tax * SEPARATE_TAX_RATE
@@ -161,17 +164,17 @@ if st.session_state.calculated:
     else:
         st.info(f"연간 수령액이 {PENSION_TAX_THRESHOLD/10000:,.0f}만원 이하로 연령별 연금소득세가 적용됩니다.")
         
-        if res['retirement_age'] < 70: initial_rate = PENSION_TAX_RATES["under_70"]
-        elif res['retirement_age'] < 80: initial_rate = PENSION_TAX_RATES["under_80"]
+        if st.session_state.retirement_age < 70: initial_rate = PENSION_TAX_RATES["under_70"]
+        elif st.session_state.retirement_age < 80: initial_rate = PENSION_TAX_RATES["under_80"]
         else: initial_rate = PENSION_TAX_RATES["over_80"]
         base_monthly_take_home_at_retirement = monthly_withdrawal_pre_tax * (1 - initial_rate)
         
         data = []
-        age_ranges = [(res['retirement_age'], 69), (70, 79), (80, res['end_age'])]
+        age_ranges = [(st.session_state.retirement_age, 69), (70, 79), (80, st.session_state.end_age)]
         for start, end in age_ranges:
-            if res['retirement_age'] > end or res['end_age'] <= start: continue
-            start_display = max(res['retirement_age'], start)
-            end_display = min(res['end_age'] - 1, end)
+            if st.session_state.retirement_age > end or st.session_state.end_age <= start: continue
+            start_display = max(st.session_state.retirement_age, start)
+            end_display = min(st.session_state.end_age - 1, end)
             if start_display > end_display: continue
             
             if start < 70: rate = PENSION_TAX_RATES["under_70"]
@@ -184,10 +187,10 @@ if st.session_state.calculated:
         st.table(data)
     
     st.header("🕒 은퇴 후 첫 월급의 현재가치")
-    years_to_discount = res['retirement_age'] - res['start_age']
-    present_value_of_pension = base_monthly_take_home_at_retirement / ((1 + res['inflation_rate']) ** years_to_discount)
-    st.markdown(f"미래({res['retirement_age']}세)에 받을 첫 월 실수령액 **{base_monthly_take_home_at_retirement:,.0f}원**은,")
-    st.markdown(f"연평균 물가상승률(연 {res['inflation_rate'] * 100:.1f}%)을 감안하면, **현재 시점의 약 {present_value_of_pension:,.0f}원**과 같은 가치입니다.")
+    years_to_discount = st.session_state.retirement_age - st.session_state.start_age
+    present_value_of_pension = base_monthly_take_home_at_retirement / ((1 + inflation_rate) ** years_to_discount)
+    st.markdown(f"미래({st.session_state.retirement_age}세)에 받을 첫 월 실수령액 **{base_monthly_take_home_at_retirement:,.0f}원**은,")
+    st.markdown(f"연평균 물가상승률(연 {inflation_rate * 100:.1f}%)을 감안하면, **현재 시점의 약 {present_value_of_pension:,.0f}원**과 같은 가치입니다.")
 
 with st.expander("주의사항 보기"):
     st.caption("""
