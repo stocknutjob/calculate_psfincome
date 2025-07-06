@@ -68,15 +68,10 @@ def calculate_annual_pension_tax(payout_under_limit: float, other_pension_income
         return {'chosen': tax, 'comprehensive': tax, 'separate': tax, 'choice': "저율과세"}
     else:
         # 옵션 A: 종합과세 시 추가되는 세액 계산
-        # 1. 사적연금을 제외한 다른 소득에 대한 세금 계산
         taxable_other_income = (other_pension_income - get_pension_income_deduction_amount(other_pension_income)) + other_comprehensive_income
         tax_without_private_pension = get_comprehensive_tax(taxable_other_income)
-
-        # 2. 사적연금을 포함한 총소득에 대한 세금 계산
         taxable_total_income = (total_pension_gross - get_pension_income_deduction_amount(total_pension_gross)) + other_comprehensive_income
         tax_with_private_pension = get_comprehensive_tax(taxable_total_income)
-
-        # 3. 사적연금으로 인해 순수하게 증가하는 세액 계산
         tax_on_private_pension_comp = max(0, tax_with_private_pension - tax_without_private_pension)
 
         # 옵션 B: 16.5% 분리과세 시 세액 계산
@@ -108,7 +103,7 @@ def run_payout_simulation(inputs: UserInput, total_at_retirement, total_non_dedu
             annual_payout = 0
         elif post_ret_rate == 0:
             annual_payout = current_balance / remaining_years
-        elif post_ret_rate <= -1: # -100% 수익률
+        elif post_ret_rate <= -1:
             annual_payout = current_balance
         else:
             annuity_factor_ordinary = (1 - (1 + post_ret_rate)**-remaining_years) / post_ret_rate
@@ -126,7 +121,6 @@ def run_payout_simulation(inputs: UserInput, total_at_retirement, total_non_dedu
         tax_on_limit_excess = 0
         pension_payout_under_limit = from_taxable
 
-        # 연금수령한도 초과분 계산 (매년 계좌 평가액 기준으로 재계산)
         if payout_year_count <= 10:
             pension_payout_limit = (current_balance * 1.2) / (11 - payout_year_count)
             if from_taxable > pension_payout_limit:
@@ -134,7 +128,6 @@ def run_payout_simulation(inputs: UserInput, total_at_retirement, total_non_dedu
                 pension_payout_under_limit = pension_payout_limit
                 tax_on_limit_excess = pension_payout_over_limit * OTHER_INCOME_TAX_RATE
 
-        # 한도 내 금액은 연금소득세 과세
         if pension_payout_under_limit > 0:
             pension_tax_info = calculate_annual_pension_tax(
                 payout_under_limit=pension_payout_under_limit,
@@ -147,7 +140,7 @@ def run_payout_simulation(inputs: UserInput, total_at_retirement, total_non_dedu
         total_tax_paid = pension_tax + tax_on_limit_excess
         annual_take_home = annual_payout - total_tax_paid
 
-        # 4. 연말 잔액 업데이트 (인출 후 수익 발생)
+        # 4. 연말 잔액 업데이트
         non_taxable_wallet = (non_taxable_wallet - from_non_taxable) * (1 + post_ret_rate)
         taxable_wallet = (taxable_wallet - from_taxable) * (1 + post_ret_rate)
 
@@ -221,34 +214,59 @@ def display_present_value_analysis(inputs: UserInput, simulation_df, total_at_re
     """현재가치 분석 및 일시금 수령액을 비교하여 보여줍니다."""
     st.header("🕒 현재가치 분석 및 일시금 수령 비교")
 
-    # 일시금 수령액 계산
+    # --- 1. 연금 총액의 현재가치 계산 및 표시 ---
+    payout_years = inputs.end_age - inputs.retirement_age
+    inflation_rate = inputs.inflation_rate / 100.0
+    total_pension_pv = 0
+
+    if not simulation_df.empty and (1 + inflation_rate > 0):
+        pv_series = simulation_df.apply(
+            lambda row: row['연간 실수령액(세후)'] / ((1 + inflation_rate) ** (row['나이'] - inputs.start_age)),
+            axis=1
+        )
+        total_pension_pv = pv_series.sum()
+
+    st.markdown(f"""
+    <div style="
+        padding: 1.5rem; border-radius: 0.5rem; background-color: #FFFFFF;
+        border: 1px solid #E0E0E0; text-align: center; margin-top: 1rem; margin-bottom: 2rem;
+    ">
+        <p style="font-size: 1rem; margin-bottom: 0.5rem; color: #4F4F4F;">은퇴 후 {payout_years}년간 받을 연금 총액을 현재가치로 환산하면,</p>
+        <p style="font-size: 1.25rem; font-weight: bold; margin-bottom: 0.5rem; color: #31333F;">총 연금의 현재가치</p>
+        <p style="font-size: 2rem; font-weight: bold; color: #31333F;">약 {total_pension_pv:,.0f} 원</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # --- 2. 첫 해 수령액(현재가치) vs 일시금 수령액 비교 ---
     taxable_lump_sum = total_at_retirement - total_non_deductible_paid
     lump_sum_tax = calculate_lump_sum_tax(taxable_lump_sum)
     lump_sum_take_home = total_at_retirement - lump_sum_tax
     lump_sum_help_text = f"은퇴 후 일시금 수령 시, 과세대상금액({taxable_lump_sum:,.0f}원)에 대해 기타소득세(16.5%)가 적용됩니다."
-    
-    # 첫 해 연금 수령액의 현재가치 계산
+
     first_year_pv = 0
+    pv_ratio_text = None
     if not simulation_df.empty:
-        inflation_rate = inputs.inflation_rate / 100.0
         first_year_row = simulation_df.iloc[0]
         first_year_take_home = first_year_row["연간 실수령액(세후)"]
         first_year_age = first_year_row["나이"]
         if 1 + inflation_rate > 0:
             first_year_pv = first_year_take_home / ((1 + inflation_rate) ** (first_year_age - inputs.start_age))
-    
-    pv_help_text = f"첫 해({inputs.retirement_age}세)에 받는 세후 연금수령액을 납입 시작 시점({inputs.start_age}세)의 가치로 환산({inputs.inflation_rate}%)한 금액입니다."
+        if first_year_take_home > 0:
+            pv_ratio = (first_year_pv / first_year_take_home) * 100
+            pv_ratio_text = f"수령액의 {pv_ratio:.1f}% 수준"
+
+    pv_help_text = f"첫 해({inputs.retirement_age}세)에 받는 세후 연금수령액을 납입 시작 시점({inputs.start_age}세)의 가치로 환산({inputs.inflation_rate}% 물가상승률 적용)한 금액입니다."
 
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("연금 수령 시 (현재가치)")
-        st.metric("첫 해 연금수령액의 현재가치", f"{first_year_pv:,.0f} 원", help=pv_help_text)
+        st.subheader("연금 수령 시 (첫 해)")
+        st.metric("첫 해 연금수령액의 현재가치", f"{first_year_pv:,.0f} 원", delta=pv_ratio_text, delta_color="off", help=pv_help_text)
     with col2:
         st.subheader("일시금 수령 시 (세후)")
         st.metric("세후 일시금 수령액", f"{lump_sum_take_home:,.0f} 원", help=lump_sum_help_text)
 
 def display_tax_choice_summary(simulation_df):
-    """연금소득세 과세 방식 비교 결과를 보여줍니다."""
+    """연금소득세 과세 방식 비교 결과를 보여줍니다. (요청사항 1)"""
     st.header("💡 연금소득세 비교 분석")
     
     choice_df = simulation_df[simulation_df['선택'].isin(['종합과세', '분리과세'])].copy()
@@ -257,14 +275,44 @@ def display_tax_choice_summary(simulation_df):
         st.info("모든 연금 수령 기간 동안 총 연금소득이 1,500만원 이하로 예상되어, 유리한 저율 분리과세(3.3%~5.5%)가 적용됩니다.")
         return
         
-    st.info("총 연금소득(다른 연금 포함)이 연 1,500만원을 초과하면 종합과세와 분리과세(16.5%) 중 더 유리한 쪽을 선택할 수 있습니다. 아래는 각 방식에 따른 예상 세금 비교입니다.")
+    st.info("총 연금소득(다른 연금 포함)이 연 1,500만원을 초과하면 종합과세와 분리과세(16.5%) 중 더 유리한 쪽을 선택할 수 있습니다. 아래는 각 방식에 따른 예상 세금 총액 비교입니다.")
     
-    cols_to_format = ['과세대상 연금액', '종합과세액', '분리과세액', '연금소득세']
-    for col in cols_to_format:
-        choice_df[col] = choice_df[col].apply(lambda x: f"{x:,.0f} 원")
+    # 1. 총 세액 비교 UI
+    total_comprehensive_tax = choice_df['종합과세액'].sum()
+    total_separate_tax = choice_df['분리과세액'].sum()
 
-    display_cols = ['나이', '과세대상 연금액', '종합과세액', '분리과세액', '선택']
-    st.dataframe(choice_df[display_cols], use_container_width=True, hide_index=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown('<p style="text-align: center;">종합과세 선택 시</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="text-align: center; font-size: 1.75rem; font-weight: bold;">{total_comprehensive_tax:,.0f} 원</p>', unsafe_allow_html=True)
+    with col2:
+        st.markdown('<p style="text-align: center;">분리과세 선택 시 (16.5%)</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="text-align: center; font-size: 1.75rem; font-weight: bold;">{total_separate_tax:,.0f} 원</p>', unsafe_allow_html=True)
+
+    # 유불리 판단 메시지
+    st.write("") # Spacer
+    if total_comprehensive_tax < total_separate_tax:
+        conclusion_text = "종합과세가 더 유리합니다."
+    elif total_separate_tax < total_comprehensive_tax:
+        conclusion_text = "분리과세가 더 유리합니다."
+    else:
+        conclusion_text = "두 방식의 예상 세금 총액이 동일합니다."
+
+    st.markdown(f"""
+    <div style="background-color: #1C3B31; color: white; padding: 12px; border-radius: 5px; text-align: center; font-size: 1.1rem; margin-top: 1rem;">
+        {conclusion_text}
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 2. 상세 내역 (숨김 처리)
+    with st.expander("연도별 상세 세금 비교 보기"):
+        st.write("아래 표는 종합과세와 분리과세 중 선택이 필요한 연도의 상세 내역입니다.")
+        cols_to_format = ['과세대상 연금액', '종합과세액', '분리과세액']
+        for col in cols_to_format:
+            choice_df[col] = choice_df[col].apply(lambda x: f"{x:,.0f} 원")
+
+        display_cols = ['나이', '과세대상 연금액', '종합과세액', '분리과세액', '선택']
+        st.dataframe(choice_df[display_cols], use_container_width=True, hide_index=True)
 
 def display_simulation_details(simulation_df):
     """연금 인출 상세 시뮬레이션 결과(그래프, 테이블)를 보여줍니다."""
@@ -305,6 +353,8 @@ def auto_calculate_non_deductible():
     if st.session_state.auto_calc_non_deductible:
         annual_contribution = st.session_state.annual_contribution
         st.session_state.non_deductible_contribution = max(0, annual_contribution - PENSION_SAVING_TAX_CREDIT_LIMIT)
+    else:
+        st.session_state.non_deductible_contribution = 0
     reset_calculation_state()
 
 # --- 세션 상태 초기화 ---
@@ -318,7 +368,7 @@ def initialize_session():
     st.session_state.pre_retirement_return = PROFILES['중립형'][0]
     st.session_state.post_retirement_return = PROFILES['중립형'][1]
     st.session_state.inflation_rate = 3.5
-    st.session_state.annual_contribution = 9_000_000
+    st.session_state.annual_contribution = 6_000_000
     st.session_state.other_non_deductible_total = 0
     st.session_state.other_pension_income = 0
     st.session_state.other_comprehensive_income = 0
@@ -326,9 +376,8 @@ def initialize_session():
     st.session_state.contribution_timing = '연말'
     
     st.session_state.investment_profile = '중립형'
-    st.session_state.auto_calc_non_deductible = True
-    
-    st.session_state.non_deductible_contribution = max(0, st.session_state.annual_contribution - PENSION_SAVING_TAX_CREDIT_LIMIT)
+    st.session_state.auto_calc_non_deductible = False
+    st.session_state.non_deductible_contribution = 0
     
     st.session_state.calculated = False
     st.session_state.has_calculated_once = False
@@ -361,7 +410,7 @@ with st.sidebar:
     st.radio("납입 시점", ['연말', '연초'], key='contribution_timing', on_change=reset_calculation_state, horizontal=True, help="연초 납입은 납입금이 1년 치 수익을 온전히 반영하여 복리 효과가 더 큽니다.")
     st.number_input("연간 총 납입액", 0, MAX_CONTRIBUTION_LIMIT, key='annual_contribution', step=100000, on_change=auto_calculate_non_deductible)
     st.checkbox("세액공제 한도 초과분을 비과세 원금으로 자동 계산", key="auto_calc_non_deductible", on_change=auto_calculate_non_deductible)
-    st.number_input("└ 자동 계산된 비과세 원금 (연간)", 0, MAX_CONTRIBUTION_LIMIT, key='non_deductible_contribution', step=100000, on_change=reset_calculation_state, disabled=st.session_state.auto_calc_non_deductible)
+    st.number_input("└ 비과세 원금 (연간)", 0, MAX_CONTRIBUTION_LIMIT, key='non_deductible_contribution', step=100000, on_change=reset_calculation_state, disabled=st.session_state.auto_calc_non_deductible)
     st.number_input("그 외, 세액공제 받지 않은 총액", 0, key='other_non_deductible_total', step=100000, on_change=reset_calculation_state, help="ISA 만기 이전분 등 납입 기간 동안 발생한 비과세 원금 총합을 입력합니다.")
     
     st.subheader("세금 정보")
@@ -371,7 +420,6 @@ with st.sidebar:
     st.number_input("임대, 사업 등 그 외 종합소득금액", 0, key='other_comprehensive_income', step=1000000, on_change=reset_calculation_state, help="부동산 임대소득 등 사업소득금액(총수입-필요경비)을 입력하세요.")
 
     if st.button("결과 확인하기", type="primary"):
-        # 최신 UI 값으로 UserInput 객체 생성
         current_inputs = UserInput(
             start_age=st.session_state.start_age, retirement_age=st.session_state.retirement_age, end_age=st.session_state.end_age,
             pre_retirement_return=st.session_state.pre_retirement_return, post_retirement_return=st.session_state.post_retirement_return,
