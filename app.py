@@ -340,35 +340,35 @@ initialize_session()
 with st.sidebar:
     st.header("정보 입력")
     
-    st.session_state.start_age = st.number_input("납입 시작 나이", 15, 100, key='start_age_input', on_change=reset_calculation_state, args=(st.session_state, 'start_age'))
-    st.session_state.retirement_age = st.number_input("은퇴 나이", MIN_RETIREMENT_AGE, 100, key='retirement_age_input', on_change=reset_calculation_state, args=(st.session_state, 'retirement_age'))
-    st.session_state.end_age = st.number_input("수령 종료 나이", st.session_state.retirement_age + MIN_PAYOUT_YEARS, 120, key='end_age_input', on_change=reset_calculation_state, args=(st.session_state, 'end_age'))
+    st.number_input("납입 시작 나이", 15, 100, key='start_age', on_change=reset_calculation_state)
+    st.number_input("은퇴 나이", MIN_RETIREMENT_AGE, 100, key='retirement_age', on_change=reset_calculation_state)
+    st.number_input("수령 종료 나이", st.session_state.retirement_age + MIN_PAYOUT_YEARS, 120, key='end_age', on_change=reset_calculation_state)
 
     st.subheader("투자 성향 및 수익률 (%)")
     profile_help = "각 투자 성향별 예상 수익률(은퇴 전/후)입니다:\n- 안정형: 4.0% / 3.0%\n- 중립형: 6.0% / 4.0%\n- 공격형: 8.0% / 5.0%"
-    profile = st.selectbox("투자 성향 선택", list(PROFILES.keys()), key="investment_profile", on_change=update_from_profile, help=profile_help)
-    is_direct_input = profile == '직접 입력'
+    st.selectbox("투자 성향 선택", list(PROFILES.keys()), key="investment_profile", on_change=update_from_profile, help=profile_help)
+    is_direct_input = st.session_state.investment_profile == '직접 입력'
     help_text_return = "투자는 원금 손실이 발생할 수 있으며, 손실이 예상될 경우에만 음수 값을 입력하세요."
-    st.session_state.pre_retirement_return = st.number_input("은퇴 전 수익률", -99.9, 99.9, key='pre_retirement_return', format="%.1f", step=0.1, on_change=reset_calculation_state, disabled=not is_direct_input, help=help_text_return)
-    st.session_state.post_retirement_return = st.number_input("은퇴 후 수익률", -99.9, 99.9, key='post_retirement_return', format="%.1f", step=0.1, on_change=reset_calculation_state, disabled=not is_direct_input, help=help_text_return)
-    st.session_state.inflation_rate = st.number_input("예상 연평균 물가상승률", -99.9, 99.9, key='inflation_rate', format="%.1f", step=0.1, on_change=reset_calculation_state)
+    st.number_input("은퇴 전 수익률", -99.9, 99.9, key='pre_retirement_return', format="%.1f", step=0.1, on_change=reset_calculation_state, disabled=not is_direct_input, help=help_text_return)
+    st.number_input("은퇴 후 수익률", -99.9, 99.9, key='post_retirement_return', format="%.1f", step=0.1, on_change=reset_calculation_state, disabled=not is_direct_input, help=help_text_return)
+    st.number_input("예상 연평균 물가상승률", -99.9, 99.9, key='inflation_rate', format="%.1f", step=0.1, on_change=reset_calculation_state)
     
     st.subheader("연간 납입액 (원)")
     st.info(
         f"연금저축 세액공제 한도: 연 {PENSION_SAVING_TAX_CREDIT_LIMIT/10000:,.0f}만원\n"
         f"연금계좌 총 납입 한도: 연 {MAX_CONTRIBUTION_LIMIT/10000:,.0f}만원"
     )
-    st.session_state.contribution_timing = st.radio("납입 시점", ['연말', '연초'], key='contribution_timing_radio', on_change=reset_calculation_state, horizontal=True, help="연초 납입은 납입금이 1년 치 수익을 온전히 반영하여 복리 효과가 더 큽니다.")
-    st.session_state.annual_contribution = st.number_input("연간 총 납입액", 0, MAX_CONTRIBUTION_LIMIT, key='annual_contribution', step=100000, on_change=auto_calculate_non_deductible)
+    st.radio("납입 시점", ['연말', '연초'], key='contribution_timing', on_change=reset_calculation_state, horizontal=True, help="연초 납입은 납입금이 1년 치 수익을 온전히 반영하여 복리 효과가 더 큽니다.")
+    st.number_input("연간 총 납입액", 0, MAX_CONTRIBUTION_LIMIT, key='annual_contribution', step=100000, on_change=auto_calculate_non_deductible)
     st.checkbox("세액공제 한도 초과분을 비과세 원금으로 자동 계산", key="auto_calc_non_deductible", on_change=auto_calculate_non_deductible)
-    st.session_state.non_deductible_contribution = st.number_input("└ 자동 계산된 비과세 원금 (연간)", 0, MAX_CONTRIBUTION_LIMIT, key='non_deductible_contribution', step=100000, on_change=reset_calculation_state, disabled=st.session_state.auto_calc_non_deductible)
-    st.session_state.other_non_deductible_total = st.number_input("그 외, 세액공제 받지 않은 총액", 0, key='other_non_deductible_total', step=100000, on_change=reset_calculation_state, help="ISA 만기 이전분 등 납입 기간 동안 발생한 비과세 원금 총합을 입력합니다.")
+    st.number_input("└ 자동 계산된 비과세 원금 (연간)", 0, MAX_CONTRIBUTION_LIMIT, key='non_deductible_contribution', step=100000, on_change=reset_calculation_state, disabled=st.session_state.auto_calc_non_deductible)
+    st.number_input("그 외, 세액공제 받지 않은 총액", 0, key='other_non_deductible_total', step=100000, on_change=reset_calculation_state, help="ISA 만기 이전분 등 납입 기간 동안 발생한 비과세 원금 총합을 입력합니다.")
     
     st.subheader("세금 정보")
-    st.session_state.income_level = st.selectbox("연 소득 구간 (세액공제율 결정)", [INCOME_LEVEL_LOW, INCOME_LEVEL_HIGH], key='income_level_select', on_change=reset_calculation_state)
+    st.selectbox("연 소득 구간 (세액공제율 결정)", [INCOME_LEVEL_LOW, INCOME_LEVEL_HIGH], key='income_level', on_change=reset_calculation_state)
     st.info("**💡 은퇴 후 다른 소득이 있으신가요?**\n\n소득 종류에 따라 세금 계산이 달라집니다. 아래 항목을 구분해서 입력하면 더 정확한 결과를 얻을 수 있습니다.")
-    st.session_state.other_pension_income = st.number_input("국민연금 등 다른 연금 소득 (연간 세전)", 0, key='other_pension_income_input', step=500000, on_change=reset_calculation_state)
-    st.session_state.other_comprehensive_income = st.number_input("임대, 사업 등 그 외 종합소득금액", 0, key='other_comprehensive_income_input', step=1000000, on_change=reset_calculation_state, help="부동산 임대소득 등 사업소득금액(총수입-필요경비)을 입력하세요.")
+    st.number_input("국민연금 등 다른 연금 소득 (연간 세전)", 0, key='other_pension_income', step=500000, on_change=reset_calculation_state)
+    st.number_input("임대, 사업 등 그 외 종합소득금액", 0, key='other_comprehensive_income', step=1000000, on_change=reset_calculation_state, help="부동산 임대소득 등 사업소득금액(총수입-필요경비)을 입력하세요.")
 
     if st.button("결과 확인하기", type="primary"):
         # 최신 UI 값으로 UserInput 객체 생성
