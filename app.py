@@ -109,7 +109,7 @@ def run_payout_simulation(inputs: UserInput, total_at_retirement, total_non_dedu
             annuity_factor_ordinary = (1 - (1 + post_ret_rate)**-remaining_years) / post_ret_rate
             annuity_factor = annuity_factor_ordinary * (1 + post_ret_rate)
             annual_payout = current_balance / annuity_factor if annuity_factor > 0 else 0
-        
+
         annual_payout = min(annual_payout, current_balance)
 
         # 2. 인출 재원 구분 (비과세 재원 우선 인출)
@@ -185,19 +185,41 @@ def display_initial_summary(inputs: UserInput, total_at_retirement, simulation_d
     """핵심 예상 결과를 3개의 지표로 요약하여 보여줍니다."""
     st.header("📈 예상 결과 요약")
     first_year_take_home = simulation_df.iloc[0]["연간 실수령액(세후)"] if not simulation_df.empty else 0
-    
+
     col1, col2, col3 = st.columns(3)
     col1.metric(f"{inputs.retirement_age}세 시점 총 적립금", f"{total_at_retirement:,.0f} 원")
     col2.metric("첫 해 연간 수령액 (세후)", f"{first_year_take_home:,.0f} 원")
     col3.metric("총 예상 절세액 (세액공제)", f"{total_tax_credit:,.0f} 원", help="납입 기간 동안 최대로 받을 수 있는 세액공제 혜택의 총합입니다.")
 
-def display_asset_visuals(total_at_retirement, total_principal, asset_growth_df):
+def display_asset_visuals(total_at_retirement, total_principal, asset_growth_df, simulation_df):
     """자산 성장 그래프와 최종 기여도 파이 차트를 보여줍니다."""
     st.header("📊 자산 성장 시각화")
     col1, col2 = st.columns([2, 1])
     with col1:
         st.subheader("연령별 예상 적립금 추이")
-        st.line_chart(asset_growth_df.rename(columns={'year':'나이', 'value':'적립금'}).set_index('나이'))
+
+        # 1. 은퇴 전 적립 기간 데이터 준비
+        pre_retirement_df = asset_growth_df.rename(columns={'year': '나이', 'value': '예상 적립금'})
+
+        # 2. 은퇴 후 인출 기간 데이터 준비
+        post_retirement_df = pd.DataFrame()
+        if not simulation_df.empty:
+            post_retirement_df = simulation_df[['나이', '연말 총 잔액']].copy()
+            post_retirement_df.rename(columns={'연말 총 잔액': '예상 적립금'}, inplace=True)
+
+        # 3. 은퇴 시점 데이터를 포함하여 전/후 데이터 연결
+        full_timeline_df = pre_retirement_df
+        if not asset_growth_df.empty:
+            retirement_point = pd.DataFrame([{'나이': pre_retirement_df['나이'].iloc[-1], '예상 적립금': total_at_retirement}])
+            full_timeline_df = pd.concat([pre_retirement_df, retirement_point, post_retirement_df], ignore_index=True)
+        elif not post_retirement_df.empty: # 납입 없이 바로 인출 시작하는 경우
+            start_point = pd.DataFrame([{'나이': simulation_df['나이'].iloc[0], '예상 적립금': total_at_retirement}])
+            full_timeline_df = pd.concat([start_point, post_retirement_df], ignore_index=True)
+
+
+        # 4. 그래프 그리기
+        st.line_chart(full_timeline_df.set_index('나이'))
+
     with col2:
         st.subheader("최종 적립금 기여도")
         total_profit = total_at_retirement - total_principal
@@ -265,36 +287,47 @@ def display_present_value_analysis(inputs: UserInput, simulation_df, total_at_re
         st.subheader("일시금 수령 시 (세후)")
         st.metric("세후 일시금 수령액", f"{lump_sum_take_home:,.0f} 원", help=lump_sum_help_text)
 
+# --- 💡 코드 수정: display_tax_choice_summary 함수 ---
 def display_tax_choice_summary(simulation_df):
-    """연금소득세 과세 방식 비교 결과를 보여줍니다. (요청사항 1)"""
+    """연금소득세 과세 방식 비교 결과를 보여줍니다."""
     st.header("💡 연금소득세 비교 분석")
-    
+
     choice_df = simulation_df[simulation_df['선택'].isin(['종합과세', '분리과세'])].copy()
-    
+
     if choice_df.empty:
         st.info("모든 연금 수령 기간 동안 총 연금소득이 1,500만원 이하로 예상되어, 유리한 저율 분리과세(3.3%~5.5%)가 적용됩니다.")
         return
-        
-    st.info("총 연금소득(다른 연금 포함)이 연 1,500만원을 초과하면 종합과세와 분리과세(16.5%) 중 더 유리한 쪽을 선택할 수 있습니다. 아래는 각 방식에 따른 예상 세금 총액 비교입니다.")
-    
-    # 1. 총 세액 비교 UI
-    total_comprehensive_tax = choice_df['종합과세액'].sum()
-    total_separate_tax = choice_df['분리과세액'].sum()
+
+    # 1. 도움말 수정 (연간 기준 명시)
+    st.info(
+        "**연간 총 연금소득** (현재 계산 중인 사적연금 + 다른 연금소득)이 **1,500만원을 초과**하는 해에는, "
+        "초과분에 대해 **종합과세**와 **16.5% 분리과세** 중 더 유리한 방식을 선택할 수 있습니다. "
+        "아래는 선택이 필요한 첫 해의 **연간 세금 예시**와 전체 기간에 대한 유불리 분석입니다."
+    )
+
+    # 2. 연간 세금 비교 UI (첫 해 예시)
+    first_choice_year = choice_df.iloc[0]
+    age_example = int(first_choice_year['나이'])
+    annual_comp_tax = first_choice_year['종합과세액']
+    annual_sep_tax = first_choice_year['분리과세액']
 
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown('<p style="text-align: center;">종합과세 선택 시</p>', unsafe_allow_html=True)
-        st.markdown(f'<p style="text-align: center; font-size: 1.75rem; font-weight: bold;">{total_comprehensive_tax:,.0f} 원</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="text-align: center;">종합과세 선택 시 (예: {age_example}세)</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="text-align: center; font-size: 1.75rem; font-weight: bold;">{annual_comp_tax:,.0f} 원</p>', unsafe_allow_html=True)
     with col2:
-        st.markdown('<p style="text-align: center;">분리과세 선택 시 (16.5%)</p>', unsafe_allow_html=True)
-        st.markdown(f'<p style="text-align: center; font-size: 1.75rem; font-weight: bold;">{total_separate_tax:,.0f} 원</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="text-align: center;">분리과세(16.5%) 선택 시 (예: {age_example}세)</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="text-align: center; font-size: 1.75rem; font-weight: bold;">{annual_sep_tax:,.0f} 원</p>', unsafe_allow_html=True)
 
-    # 유불리 판단 메시지
+    # 3. 전체 기간 유불리 판단 메시지 (계산은 총액 기준)
+    total_comprehensive_tax = choice_df['종합과세액'].sum()
+    total_separate_tax = choice_df['분리과세액'].sum()
     st.write("") # Spacer
+
     if total_comprehensive_tax < total_separate_tax:
-        conclusion_text = "종합과세가 더 유리합니다."
+        conclusion_text = f"전체 기간을 고려하면 **종합과세**가 약 **{(total_separate_tax - total_comprehensive_tax):,.0f}원** 더 유리할 것으로 보입니다."
     elif total_separate_tax < total_comprehensive_tax:
-        conclusion_text = "분리과세가 더 유리합니다."
+        conclusion_text = f"전체 기간을 고려하면 **분리과세**가 약 **{(total_comprehensive_tax - total_separate_tax):,.0f}원** 더 유리할 것으로 보입니다."
     else:
         conclusion_text = "두 방식의 예상 세금 총액이 동일합니다."
 
@@ -304,7 +337,7 @@ def display_tax_choice_summary(simulation_df):
     </div>
     """, unsafe_allow_html=True)
 
-    # 2. 상세 내역 (숨김 처리)
+    # 4. 상세 내역 (숨김 처리)
     with st.expander("연도별 상세 세금 비교 보기"):
         st.write("아래 표는 종합과세와 분리과세 중 선택이 필요한 연도의 상세 내역입니다.")
         cols_to_format = ['과세대상 연금액', '종합과세액', '분리과세액']
@@ -314,19 +347,20 @@ def display_tax_choice_summary(simulation_df):
         display_cols = ['나이', '과세대상 연금액', '종합과세액', '분리과세액', '선택']
         st.dataframe(choice_df[display_cols], use_container_width=True, hide_index=True)
 
+
 def display_simulation_details(simulation_df):
     """연금 인출 상세 시뮬레이션 결과(그래프, 테이블)를 보여줍니다."""
     st.info("실제 인출 순서(비과세 재원 우선) 및 연금수령한도를 반영한 연도별 상세 예상치입니다.")
-    
+
     chart_df = simulation_df.melt(id_vars='나이', value_vars=['연간 실수령액(세후)', '연금소득세', '한도초과 인출세금'], var_name='항목', value_name='금액')
     fig = px.bar(chart_df, x='나이', y='금액', color='항목', title='연도별 연금 수령액 구성')
     st.plotly_chart(fig, use_container_width=True)
-    
+
     display_df = simulation_df.copy()
     cols_to_format = ["연간 수령액(세전)", "연간 실수령액(세후)", "납부세금(총)", "연금소득세", "한도초과 인출세금", "연말 총 잔액"]
     for col in cols_to_format:
         display_df[col] = display_df[col].apply(lambda x: f"{x:,.0f} 원" if pd.notna(x) else "0 원")
-    
+
     display_cols = ["나이", "연간 수령액(세전)", "연간 실수령액(세후)", "납부세금(총)", "연금소득세", "한도초과 인출세금"]
     st.dataframe(display_df[display_cols], use_container_width=True, hide_index=True)
 
@@ -374,11 +408,11 @@ def initialize_session():
     st.session_state.other_comprehensive_income = 0
     st.session_state.income_level = INCOME_LEVEL_LOW
     st.session_state.contribution_timing = '연말'
-    
+
     st.session_state.investment_profile = '중립형'
     st.session_state.auto_calc_non_deductible = False
     st.session_state.non_deductible_contribution = 0
-    
+
     st.session_state.calculated = False
     st.session_state.has_calculated_once = False
     st.session_state.initialized = True
@@ -388,7 +422,7 @@ initialize_session()
 # --- 사이드바 UI 구성 ---
 with st.sidebar:
     st.header("정보 입력")
-    
+
     st.number_input("납입 시작 나이", 15, 100, key='start_age', on_change=reset_calculation_state)
     st.number_input("은퇴 나이", MIN_RETIREMENT_AGE, 100, key='retirement_age', on_change=reset_calculation_state)
     st.number_input("수령 종료 나이", st.session_state.retirement_age + MIN_PAYOUT_YEARS, 120, key='end_age', on_change=reset_calculation_state)
@@ -401,7 +435,7 @@ with st.sidebar:
     st.number_input("은퇴 전 수익률", -99.9, 99.9, key='pre_retirement_return', format="%.1f", step=0.1, on_change=reset_calculation_state, disabled=not is_direct_input, help=help_text_return)
     st.number_input("은퇴 후 수익률", -99.9, 99.9, key='post_retirement_return', format="%.1f", step=0.1, on_change=reset_calculation_state, disabled=not is_direct_input, help=help_text_return)
     st.number_input("예상 연평균 물가상승률", -99.9, 99.9, key='inflation_rate', format="%.1f", step=0.1, on_change=reset_calculation_state)
-    
+
     st.subheader("연간 납입액 (원)")
     st.info(
         f"연금저축 세액공제 한도: 연 {PENSION_SAVING_TAX_CREDIT_LIMIT/10000:,.0f}만원\n"
@@ -412,7 +446,7 @@ with st.sidebar:
     st.checkbox("세액공제 한도 초과분을 비과세 원금으로 자동 계산", key="auto_calc_non_deductible", on_change=auto_calculate_non_deductible)
     st.number_input("└ 비과세 원금 (연간)", 0, MAX_CONTRIBUTION_LIMIT, key='non_deductible_contribution', step=100000, on_change=reset_calculation_state, disabled=st.session_state.auto_calc_non_deductible)
     st.number_input("그 외, 세액공제 받지 않은 총액", 0, key='other_non_deductible_total', step=100000, on_change=reset_calculation_state, help="ISA 만기 이전분 등 납입 기간 동안 발생한 비과세 원금 총합을 입력합니다.")
-    
+
     st.subheader("세금 정보")
     st.selectbox("연 소득 구간 (세액공제율 결정)", [INCOME_LEVEL_LOW, INCOME_LEVEL_HIGH], key='income_level', on_change=reset_calculation_state)
     st.info("**💡 은퇴 후 다른 소득이 있으신가요?**\n\n소득 종류에 따라 세금 계산이 달라집니다. 아래 항목을 구분해서 입력하면 더 정확한 결과를 얻을 수 있습니다.")
@@ -438,7 +472,7 @@ with st.sidebar:
         if ui.end_age - ui.retirement_age < MIN_PAYOUT_YEARS: errors.append(f"최소 연금 수령 기간은 {MIN_PAYOUT_YEARS}년입니다.")
         if ui.annual_contribution > MAX_CONTRIBUTION_LIMIT: errors.append(f"연간 총 납입액은 최대 한도({MAX_CONTRIBUTION_LIMIT:,.0f}원)를 초과할 수 없습니다.")
         if ui.non_deductible_contribution > ui.annual_contribution: errors.append("'비과세 원금'은 '연간 총 납입액'보다 클 수 없습니다.")
-        
+
         if errors:
             for error in errors: st.error(error, icon="🚨")
             st.session_state.calculated = False
@@ -453,21 +487,21 @@ if st.session_state.get('calculated', False):
     total_principal_paid = ui.annual_contribution * contribution_years
     non_deductible_from_annual = ui.non_deductible_contribution * contribution_years
     total_non_deductible_paid = non_deductible_from_annual + ui.other_non_deductible_total
-    
+
     tax_credit_rate = 0.165 if ui.income_level == INCOME_LEVEL_LOW else 0.132
     tax_credit_base = ui.annual_contribution - ui.non_deductible_contribution
     tax_credit_per_year = min(tax_credit_base, PENSION_SAVING_TAX_CREDIT_LIMIT) * tax_credit_rate
     total_tax_credit = tax_credit_per_year * contribution_years
 
     total_at_retirement, asset_growth_df = calculate_total_at_retirement(ui)
-    
+
     if total_at_retirement > 0:
         simulation_df = run_payout_simulation(ui, total_at_retirement, total_non_deductible_paid)
-        
+
         display_initial_summary(ui, total_at_retirement, simulation_df, total_tax_credit)
-        display_asset_visuals(total_at_retirement, total_principal_paid, asset_growth_df)
+        display_asset_visuals(total_at_retirement, total_principal_paid, asset_growth_df, simulation_df)
         display_present_value_analysis(ui, simulation_df, total_at_retirement, total_non_deductible_paid)
-        
+
         if not simulation_df.empty:
             display_tax_choice_summary(simulation_df)
             with st.expander("연금 인출 상세 시뮬레이션 보기"):
