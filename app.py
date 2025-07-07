@@ -554,8 +554,6 @@ def initialize_session():
     st.session_state.start_age = 30
     st.session_state.retirement_age = 60
     st.session_state.end_age = 90
-    st.session_state.pre_retirement_return = PROFILES['중립형'][0]
-    st.session_state.post_retirement_return = PROFILES['중립형'][1]
     st.session_state.inflation_rate = 3.5
     st.session_state.annual_contribution = 6_000_000
     st.session_state.other_non_deductible_total = 0
@@ -567,7 +565,14 @@ def initialize_session():
     st.session_state.current_age_actual = 30 # 초기값 설정 (납입 시작 나이와 동일하게 설정)
     st.session_state.include_pension_deduction = False # 연금소득공제 포함 여부 기본값
 
-    st.session_state.investment_profile = '공격형' # 기본값을 '공격형'으로 변경
+    # 투자 성향 기본값을 먼저 설정
+    st.session_state.investment_profile = '공격형' 
+    # 설정된 투자 성향에 따라 수익률 초기화
+    # PROFILES 딕셔너리에서 '공격형'에 해당하는 값을 가져와 설정
+    pre_ret, post_ret = PROFILES[st.session_state.investment_profile]
+    st.session_state.pre_retirement_return = pre_ret
+    st.session_state.post_retirement_return = post_ret
+
     st.session_state.auto_calc_non_deductible = True # 기본값을 True로 변경
     st.session_state.non_deductible_contribution = 0 # 이 값은 auto_calculate_non_deductible에서 설정될 것임.
 
@@ -674,7 +679,7 @@ with st.sidebar:
 
         if errors:
             # 오류가 있을 경우 오류 메시지 표시 및 계산 상태 초기화
-            for error in errors: st.error(error, icon="�")
+            for error in errors: st.error(error, icon="🚨")
             st.session_state.calculated = False
         else:
             # 오류가 없으면 계산 상태를 True로 설정하고, 한 번 계산했음을 표시
